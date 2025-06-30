@@ -120,20 +120,29 @@ function App() {
     }
 
     try {
+      console.log('Starting delete for file ID:', fileId);
       const response = await fetch(`${backendUrl}/api/files/${fileId}`, {
         method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
 
-      if (response.ok) {
+      console.log('Delete response status:', response.status);
+      const result = await response.json();
+      console.log('Delete response data:', result);
+
+      if (response.ok && result.success) {
         setMessage('File deleted successfully');
-        fetchFiles();
-        fetchStats();
+        // Force refresh the file list
+        await fetchFiles();
+        await fetchStats();
       } else {
-        setMessage('Delete failed');
+        setMessage(`Delete failed: ${result.message || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Delete error:', error);
-      setMessage('Delete failed: Network error');
+      setMessage(`Delete failed: ${error.message}`);
     }
   };
 
