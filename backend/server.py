@@ -176,7 +176,7 @@ async def upload_file(
         validate_file(file)
         
         # Validate category
-        if category not in CATEGORIES:
+        if not category or category not in CATEGORIES:
             category = "Other"
         
         # Check file size
