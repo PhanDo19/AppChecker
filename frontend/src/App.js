@@ -325,25 +325,149 @@ function App() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                Software Distribution Platform
-              </h1>
-              <p className="text-gray-600">Upload, organize and distribute your software with visual showcase</p>
-            </div>
-            <div className="flex space-x-6 text-sm text-gray-500">
-              <div>
-                <span className="font-semibold text-blue-600">{stats.total_files}</span> Files
+      <header className="relative bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-800 text-white overflow-hidden">
+        {/* Background Pattern */}
+        <div className="absolute inset-0 bg-black opacity-50"></div>
+        <div className="absolute inset-0" style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+        }}></div>
+        
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between">
+            {/* Left Side - Branding */}
+            <div className="flex-1 mb-6 lg:mb-0">
+              <div className="flex items-center space-x-4 mb-3">
+                <div className="flex items-center justify-center w-12 h-12 bg-white bg-opacity-20 rounded-xl backdrop-blur-sm">
+                  <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-3xl lg:text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-blue-200">
+                    SoftHub
+                  </h1>
+                  <div className="text-blue-100 text-sm font-medium">
+                    Software Distribution Platform
+                  </div>
+                </div>
               </div>
-              <div>
-                <span className="font-semibold text-green-600">{stats.total_downloads}</span> Downloads
+              <p className="text-blue-100 text-lg max-w-2xl leading-relaxed">
+                🚀 Upload, organize and distribute your software with professional visual showcase. 
+                <span className="text-yellow-300 font-semibold"> The modern way to share software.</span>
+              </p>
+            </div>
+
+            {/* Right Side - Statistics */}
+            <div className="lg:flex-shrink-0">
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+                {/* Total Files Card */}
+                <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 text-center border border-white border-opacity-20 hover:bg-opacity-20 transition-all duration-300">
+                  <div className="flex items-center justify-center w-10 h-10 bg-blue-500 bg-opacity-30 rounded-lg mx-auto mb-2">
+                    <svg className="w-6 h-6 text-blue-200" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zm0 2h12v8H4V6z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="text-2xl lg:text-3xl font-bold text-white mb-1">
+                    {stats.total_files}
+                  </div>
+                  <div className="text-blue-200 text-sm font-medium">
+                    Software Files
+                  </div>
+                </div>
+
+                {/* Total Downloads Card */}
+                <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 text-center border border-white border-opacity-20 hover:bg-opacity-20 transition-all duration-300">
+                  <div className="flex items-center justify-center w-10 h-10 bg-green-500 bg-opacity-30 rounded-lg mx-auto mb-2">
+                    <svg className="w-6 h-6 text-green-200" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="text-2xl lg:text-3xl font-bold text-white mb-1">
+                    {stats.total_downloads}
+                  </div>
+                  <div className="text-green-200 text-sm font-medium">
+                    Total Downloads
+                  </div>
+                </div>
+
+                {/* Categories Card */}
+                <div className="bg-white bg-opacity-10 backdrop-blur-sm rounded-xl p-4 text-center border border-white border-opacity-20 hover:bg-opacity-20 transition-all duration-300 col-span-2 lg:col-span-1">
+                  <div className="flex items-center justify-center w-10 h-10 bg-purple-500 bg-opacity-30 rounded-lg mx-auto mb-2">
+                    <svg className="w-6 h-6 text-purple-200" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z" />
+                    </svg>
+                  </div>
+                  <div className="text-2xl lg:text-3xl font-bold text-white mb-1">
+                    {stats.category_stats ? stats.category_stats.length : 0}
+                  </div>
+                  <div className="text-purple-200 text-sm font-medium">
+                    Categories
+                  </div>
+                </div>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button 
+                  onClick={() => document.getElementById('fileInput')?.focus()}
+                  className="px-4 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 backdrop-blur-sm rounded-lg text-white text-sm font-medium border border-white border-opacity-30 transition-all duration-300 flex items-center space-x-2"
+                >
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
+                  </svg>
+                  <span>Quick Upload</span>
+                </button>
+                <button 
+                  onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+                  className="px-4 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 backdrop-blur-sm rounded-lg text-white text-sm font-medium border border-white border-opacity-30 transition-all duration-300 flex items-center space-x-2"
+                >
+                  {viewMode === 'grid' ? (
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 8a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 12a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 16a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                    </svg>
+                  )}
+                  <span>{viewMode === 'grid' ? 'List View' : 'Grid View'}</span>
+                </button>
               </div>
             </div>
           </div>
+
+          {/* Bottom Stats Bar - Popular Categories */}
+          {stats.category_stats && stats.category_stats.length > 0 && (
+            <div className="mt-8 pt-6 border-t border-white border-opacity-20">
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div className="text-blue-200 text-sm font-medium flex items-center space-x-2">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z" clipRule="evenodd" />
+                  </svg>
+                  <span>Popular Categories:</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {stats.category_stats.slice(0, 4).map((stat) => (
+                    <button
+                      key={stat._id}
+                      onClick={() => setSelectedCategory(stat._id)}
+                      className="px-3 py-1 bg-white bg-opacity-20 hover:bg-opacity-30 backdrop-blur-sm rounded-full text-white text-xs font-medium border border-white border-opacity-30 transition-all duration-300 flex items-center space-x-1"
+                    >
+                      <span>{stat._id}</span>
+                      <span className="bg-white bg-opacity-30 rounded-full px-2 py-0.5 text-xs">
+                        {stat.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* Animated Elements */}
+        <div className="absolute top-0 right-0 -mt-16 -mr-16 w-32 h-32 bg-gradient-to-br from-blue-400 to-purple-600 rounded-full opacity-20 animate-pulse"></div>
+        <div className="absolute bottom-0 left-0 -mb-8 -ml-8 w-24 h-24 bg-gradient-to-br from-pink-400 to-red-600 rounded-full opacity-20 animate-bounce"></div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
