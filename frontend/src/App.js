@@ -4,6 +4,7 @@ import './App.css';
 function App() {
   const [files, setFiles] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedImages, setSelectedImages] = useState([]);
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Other');
   const [categories, setCategories] = useState(['Other']);
@@ -15,6 +16,7 @@ function App() {
     popular_files: []
   });
   const [message, setMessage] = useState('');
+  const [viewMode, setViewMode] = useState('grid'); // grid or list
   
   // Search and filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -23,6 +25,9 @@ function App() {
   const [sortBy, setSortBy] = useState('upload_date');
   const [sortOrder, setSortOrder] = useState('desc');
   const [isSearching, setIsSearching] = useState(false);
+
+  // Image gallery modal state
+  const [selectedImageModal, setSelectedImageModal] = useState(null);
 
   const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 
@@ -112,6 +117,16 @@ function App() {
     setMessage('');
   };
 
+  const handleImageSelect = (event) => {
+    const files = Array.from(event.target.files);
+    if (files.length > 5) {
+      setMessage('Maximum 5 images allowed');
+      return;
+    }
+    setSelectedImages(files);
+    setMessage('');
+  };
+
   const handleUpload = async () => {
     if (!selectedFile) {
       setMessage('Please select a file first');
@@ -127,6 +142,11 @@ function App() {
       formData.append('description', description);
     }
     formData.append('category', category);
+    
+    // Add images
+    selectedImages.forEach((image, index) => {
+      formData.append('images', image);
+    });
 
     try {
       const response = await fetch(`${backendUrl}/api/files/upload`, {
@@ -139,9 +159,11 @@ function App() {
       if (response.ok) {
         setMessage('File uploaded successfully!');
         setSelectedFile(null);
+        setSelectedImages([]);
         setDescription('');
         setCategory('Other');
         document.getElementById('fileInput').value = '';
+        document.getElementById('imageInput').value = '';
         fetchFiles();
         fetchStats();
       } else {
@@ -256,6 +278,50 @@ function App() {
     return colors[category] || colors['Other'];
   };
 
+  const getFileIcon = (fileName) => {
+    const extension = fileName.split('.').pop().toLowerCase();
+    switch (extension) {
+      case 'exe':
+      case 'msi':
+        return '🖥️';
+      case 'apk':
+        return '📱';
+      case 'dmg':
+        return '🍎';
+      case 'zip':
+      case 'tar':
+      case 'gz':
+        return '📦';
+      case 'deb':
+      case 'rpm':
+        return '🐧';
+      default:
+        return '💾';
+    }
+  };
+
+  const ImageModal = ({ image, onClose }) => {
+    if (!image) return null;
+    
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+        <div className="relative max-w-4xl max-h-full">
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 text-white text-2xl bg-black bg-opacity-50 rounded-full w-10 h-10 flex items-center justify-center hover:bg-opacity-75"
+          >
+            ×
+          </button>
+          <img
+            src={`${backendUrl}${image.url}`}
+            alt="Software Screenshot"
+            className="max-w-full max-h-full object-contain rounded-lg"
+          />
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -266,7 +332,7 @@ function App() {
               <h1 className="text-3xl font-bold text-gray-900">
                 Software Distribution Platform
               </h1>
-              <p className="text-gray-600">Upload, organize and distribute your software</p>
+              <p className="text-gray-600">Upload, organize and distribute your software with visual showcase</p>
             </div>
             <div className="flex space-x-6 text-sm text-gray-500">
               <div>
@@ -287,11 +353,11 @@ function App() {
             <h2 className="text-xl font-semibold text-gray-900">Upload Software</h2>
           </div>
           <div className="p-6">
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select File
+                    Select Software File
                   </label>
                   <input
                     id="fileInput"
@@ -324,6 +390,31 @@ function App() {
                   </select>
                 </div>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Screenshots (Optional - Max 5 images)
+                </label>
+                <input
+                  id="imageInput"
+                  type="file"
+                  multiple
+                  onChange={handleImageSelect}
+                  accept=".jpg,.jpeg,.png,.gif,.webp"
+                  className="block w-full text-sm text-gray-500
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded-full file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-green-50 file:text-green-700
+                    hover:file:bg-green-100
+                    cursor-pointer"
+                />
+                {selectedImages.length > 0 && (
+                  <div className="mt-2 text-sm text-gray-600">
+                    {selectedImages.length} image(s) selected
+                  </div>
+                )}
+              </div>
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -332,21 +423,28 @@ function App() {
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Enter file description..."
+                  placeholder="Enter software description, features, requirements..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-md 
                     focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  rows="3"
+                  rows="4"
                 />
               </div>
 
               <button
                 onClick={handleUpload}
                 disabled={uploading || !selectedFile}
-                className="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium
+                className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium
                   hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed
-                  transition-colors duration-200"
+                  transition-colors duration-200 flex items-center"
               >
-                {uploading ? 'Uploading...' : 'Upload File'}
+                {uploading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Uploading...
+                  </>
+                ) : (
+                  'Upload Software'
+                )}
               </button>
             </div>
 
@@ -365,7 +463,28 @@ function App() {
         {/* Search and Filter Section */}
         <div className="bg-white rounded-lg shadow mb-8">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900">Search & Filter</h2>
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-gray-900">Search & Filter</h2>
+              <div className="flex items-center space-x-4">
+                <span className="text-sm text-gray-500">View:</span>
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`p-2 rounded ${viewMode === 'grid' ? 'bg-blue-100 text-blue-600' : 'text-gray-400'}`}
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-2 rounded ${viewMode === 'list' ? 'bg-blue-100 text-blue-600' : 'text-gray-400'}`}
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 8a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 12a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 16a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
           <div className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -485,7 +604,7 @@ function App() {
           </div>
         )}
 
-        {/* Files List */}
+        {/* Files Display */}
         <div className="bg-white rounded-lg shadow">
           <div className="px-6 py-4 border-b border-gray-200">
             <h2 className="text-xl font-semibold text-gray-900">
@@ -499,58 +618,182 @@ function App() {
           </div>
           <div className="p-6">
             {files.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
+              <div className="text-center py-12 text-gray-500">
+                <div className="text-6xl mb-4">📦</div>
                 {searchTerm || selectedCategory !== 'All' || selectedFileType !== 'All' 
                   ? 'No files match your search criteria. Try adjusting your filters.'
                   : 'No files uploaded yet. Upload your first software above!'}
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className={
+                viewMode === 'grid' 
+                  ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' 
+                  : 'space-y-4'
+              }>
                 {files.map((file) => (
-                  <div key={file.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <h3 className="text-lg font-medium text-gray-900">
-                            {file.original_name}
-                          </h3>
+                  viewMode === 'grid' ? (
+                    // Grid View Card
+                    <div key={file.id} className="bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden">
+                      {/* Image Section */}
+                      <div className="relative h-48 bg-gradient-to-br from-gray-50 to-gray-100">
+                        {file.images && file.images.length > 0 ? (
+                          <img
+                            src={`${backendUrl}${file.images[0].thumbnail_url}`}
+                            alt={file.original_name}
+                            className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => setSelectedImageModal(file.images[0])}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-400">
+                            <div className="text-center">
+                              <div className="text-6xl mb-2">{getFileIcon(file.original_name)}</div>
+                              <div className="text-sm">No Preview</div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Category Badge */}
+                        <div className="absolute top-3 left-3">
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(file.category)}`}>
                             {file.category}
                           </span>
                         </div>
-                        {file.description && (
-                          <p className="text-gray-600 mb-2">{file.description}</p>
+
+                        {/* Image Count Badge */}
+                        {file.images && file.images.length > 1 && (
+                          <div className="absolute top-3 right-3 bg-black bg-opacity-50 text-white px-2 py-1 rounded-full text-xs">
+                            +{file.images.length - 1} more
+                          </div>
                         )}
-                        <div className="flex flex-wrap gap-4 text-sm text-gray-500">
-                          <span>Size: {formatFileSize(file.file_size)}</span>
-                          <span>Uploaded: {formatDate(file.upload_date)}</span>
-                          <span>Downloads: {file.download_count}</span>
+                      </div>
+
+                      {/* Content Section */}
+                      <div className="p-5">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-1">
+                          {file.original_name}
+                        </h3>
+                        
+                        {file.description && (
+                          <p className="text-gray-600 text-sm mb-3 line-clamp-2">
+                            {file.description}
+                          </p>
+                        )}
+
+                        <div className="flex justify-between text-xs text-gray-500 mb-4">
+                          <span>{formatFileSize(file.file_size)}</span>
+                          <span>{formatDate(file.upload_date)}</span>
+                          <span>{file.download_count} downloads</span>
+                        </div>
+
+                        {/* Image Thumbnails */}
+                        {file.images && file.images.length > 0 && (
+                          <div className="flex space-x-2 mb-4 overflow-x-auto">
+                            {file.images.slice(0, 3).map((image, index) => (
+                              <img
+                                key={index}
+                                src={`${backendUrl}${image.thumbnail_url}`}
+                                alt={`Screenshot ${index + 1}`}
+                                className="w-16 h-12 object-cover rounded cursor-pointer hover:opacity-75 transition-opacity flex-shrink-0"
+                                onClick={() => setSelectedImageModal(image)}
+                              />
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Actions */}
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleDownload(file.id, file.original_name)}
+                            className="flex-1 bg-green-600 text-white px-4 py-2 rounded-md font-medium text-sm
+                              hover:bg-green-700 transition-colors duration-200"
+                          >
+                            Download
+                          </button>
+                          <button
+                            onClick={() => handleDelete(file.id)}
+                            className="bg-red-600 text-white px-4 py-2 rounded-md font-medium text-sm
+                              hover:bg-red-700 transition-colors duration-200"
+                          >
+                            Delete
+                          </button>
                         </div>
                       </div>
-                      <div className="flex space-x-2 ml-4">
-                        <button
-                          onClick={() => handleDownload(file.id, file.original_name)}
-                          className="bg-green-600 text-white px-4 py-2 rounded-md font-medium
-                            hover:bg-green-700 transition-colors duration-200"
-                        >
-                          Download
-                        </button>
-                        <button
-                          onClick={() => handleDelete(file.id)}
-                          className="bg-red-600 text-white px-4 py-2 rounded-md font-medium
-                            hover:bg-red-700 transition-colors duration-200"
-                        >
-                          Delete
-                        </button>
+                    </div>
+                  ) : (
+                    // List View
+                    <div key={file.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                      <div className="flex items-start space-x-4">
+                        {/* Thumbnail */}
+                        <div className="w-20 h-16 flex-shrink-0 bg-gray-100 rounded-md overflow-hidden">
+                          {file.images && file.images.length > 0 ? (
+                            <img
+                              src={`${backendUrl}${file.images[0].thumbnail_url}`}
+                              alt={file.original_name}
+                              className="w-full h-full object-cover cursor-pointer"
+                              onClick={() => setSelectedImageModal(file.images[0])}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-400 text-2xl">
+                              {getFileIcon(file.original_name)}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="text-lg font-medium text-gray-900">
+                              {file.original_name}
+                            </h3>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(file.category)}`}>
+                              {file.category}
+                            </span>
+                          </div>
+                          {file.description && (
+                            <p className="text-gray-600 mb-2">{file.description}</p>
+                          )}
+                          <div className="flex flex-wrap gap-4 text-sm text-gray-500">
+                            <span>Size: {formatFileSize(file.file_size)}</span>
+                            <span>Uploaded: {formatDate(file.upload_date)}</span>
+                            <span>Downloads: {file.download_count}</span>
+                            {file.images && file.images.length > 0 && (
+                              <span>{file.images.length} screenshot(s)</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleDownload(file.id, file.original_name)}
+                            className="bg-green-600 text-white px-4 py-2 rounded-md font-medium
+                              hover:bg-green-700 transition-colors duration-200"
+                          >
+                            Download
+                          </button>
+                          <button
+                            onClick={() => handleDelete(file.id)}
+                            className="bg-red-600 text-white px-4 py-2 rounded-md font-medium
+                              hover:bg-red-700 transition-colors duration-200"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )
                 ))}
               </div>
             )}
           </div>
         </div>
       </main>
+
+      {/* Image Modal */}
+      <ImageModal 
+        image={selectedImageModal} 
+        onClose={() => setSelectedImageModal(null)} 
+      />
     </div>
   );
 }

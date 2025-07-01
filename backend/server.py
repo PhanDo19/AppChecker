@@ -12,9 +12,11 @@ from datetime import datetime
 import mimetypes
 from pathlib import Path
 import re
+from PIL import Image
+import io
 
 # Initialize FastAPI app
-app = FastAPI(title="Software Distribution Platform", version="2.0.0")
+app = FastAPI(title="Software Distribution Platform", version="3.0.0")
 
 # CORS middleware
 app.add_middleware(
@@ -49,8 +51,12 @@ except Exception as e:
 
 # File storage configuration
 UPLOAD_DIRECTORY = "/app/uploads"
+IMAGES_DIRECTORY = "/app/uploads/images"
 ALLOWED_EXTENSIONS = {'.exe', '.msi', '.dmg', '.apk', '.deb', '.rpm', '.zip', '.tar.gz', '.tar.xz'}
+ALLOWED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
 MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB
+MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10MB per image
+MAX_IMAGES_PER_SOFTWARE = 5
 
 # Categories configuration
 CATEGORIES = [
@@ -68,10 +74,20 @@ CATEGORIES = [
     "Other"
 ]
 
-# Create upload directory if it doesn't exist
+# Create upload directories if they don't exist
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
+os.makedirs(IMAGES_DIRECTORY, exist_ok=True)
+
+# Mount static files for serving images
+app.mount("/images", StaticFiles(directory=IMAGES_DIRECTORY), name="images")
 
 # Pydantic models
+class ImageInfo(BaseModel):
+    id: str
+    filename: str
+    url: str
+    thumbnail_url: str
+
 class FileInfo(BaseModel):
     id: str
     original_name: str
@@ -82,6 +98,7 @@ class FileInfo(BaseModel):
     description: Optional[str] = None
     category: str = "Other"
     download_count: int = 0
+    images: List[ImageInfo] = []
 
 class FileUploadResponse(BaseModel):
     success: bool
@@ -109,12 +126,69 @@ def validate_file(file: UploadFile):
     
     return True
 
+def validate_image(file: UploadFile):
+    """Validate uploaded image"""
+    file_extension = Path(file.filename).suffix.lower()
+    
+    if file_extension not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Image type {file_extension} not allowed. Allowed types: {', '.join(ALLOWED_IMAGE_EXTENSIONS)}"
+        )
+    
+    return True
+
 def get_file_size(file: UploadFile):
     """Get file size"""
     file.file.seek(0, 2)  # Seek to end
     size = file.file.tell()
     file.file.seek(0)  # Reset to beginning
     return size
+
+def process_image(image_file: UploadFile, file_id: str) -> dict:
+    """Process and save image with thumbnail generation"""
+    try:
+        # Generate unique image filename
+        image_id = str(uuid.uuid4())
+        file_extension = Path(image_file.filename).suffix.lower()
+        if file_extension not in ALLOWED_IMAGE_EXTENSIONS:
+            file_extension = '.jpg'
+        
+        image_filename = f"{file_id}_{image_id}{file_extension}"
+        thumbnail_filename = f"{file_id}_{image_id}_thumb{file_extension}"
+        
+        image_path = os.path.join(IMAGES_DIRECTORY, image_filename)
+        thumbnail_path = os.path.join(IMAGES_DIRECTORY, thumbnail_filename)
+        
+        # Read image data
+        image_data = image_file.file.read()
+        image_file.file.seek(0)
+        
+        # Open image with PIL
+        with Image.open(io.BytesIO(image_data)) as img:
+            # Convert to RGB if necessary
+            if img.mode in ('RGBA', 'LA', 'P'):
+                img = img.convert('RGB')
+            
+            # Save original (with max size limit)
+            if img.width > 1920 or img.height > 1080:
+                img.thumbnail((1920, 1080), Image.Resampling.LANCZOS)
+            img.save(image_path, optimize=True, quality=85)
+            
+            # Create thumbnail
+            img_thumb = img.copy()
+            img_thumb.thumbnail((300, 200), Image.Resampling.LANCZOS)
+            img_thumb.save(thumbnail_path, optimize=True, quality=80)
+        
+        return {
+            "id": image_id,
+            "filename": image_filename,
+            "url": f"/images/{image_filename}",
+            "thumbnail_url": f"/images/{thumbnail_filename}"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image processing failed: {str(e)}")
 
 def build_search_query(filters: SearchFilters):
     """Build MongoDB query from search filters"""
@@ -157,7 +231,7 @@ def build_sort_criteria(filters: SearchFilters):
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "Software Distribution Platform v2.0"}
+    return {"status": "healthy", "service": "Software Distribution Platform v3.0"}
 
 @app.get("/api/categories")
 async def get_categories():
@@ -168,11 +242,12 @@ async def get_categories():
 async def upload_file(
     file: UploadFile = File(...),
     description: Optional[str] = Form(None),
-    category: Optional[str] = Form("Other")
+    category: Optional[str] = Form("Other"),
+    images: List[UploadFile] = File(default=[])
 ):
-    """Upload a software file with category"""
+    """Upload a software file with category and optional images"""
     try:
-        # Validate file
+        # Validate main file
         validate_file(file)
         
         # Validate category
@@ -187,15 +262,43 @@ async def upload_file(
                 detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024*1024)}MB"
             )
         
+        # Validate images
+        if len(images) > MAX_IMAGES_PER_SOFTWARE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Too many images. Maximum {MAX_IMAGES_PER_SOFTWARE} images allowed"
+            )
+        
+        for img in images:
+            if img.filename:  # Skip empty file uploads
+                validate_image(img)
+                img_size = get_file_size(img)
+                if img_size > MAX_IMAGE_SIZE:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Image {img.filename} too large. Maximum size is {MAX_IMAGE_SIZE // (1024*1024)}MB"
+                    )
+        
         # Generate unique filename
         file_id = str(uuid.uuid4())
         file_extension = Path(file.filename).suffix.lower()
         file_name = f"{file_id}{file_extension}"
         file_path = os.path.join(UPLOAD_DIRECTORY, file_name)
         
-        # Save file to disk
+        # Save main file to disk
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
+        
+        # Process images
+        processed_images = []
+        for img in images:
+            if img.filename:  # Skip empty uploads
+                try:
+                    image_info = process_image(img, file_id)
+                    processed_images.append(image_info)
+                except Exception as e:
+                    print(f"Error processing image {img.filename}: {e}")
+                    # Continue with other images, don't fail the whole upload
         
         # Get file type
         file_type = mimetypes.guess_type(file.filename)[0] or "application/octet-stream"
@@ -210,7 +313,8 @@ async def upload_file(
             "upload_date": datetime.utcnow(),
             "description": description,
             "category": category,
-            "download_count": 0
+            "download_count": 0,
+            "images": processed_images
         }
         
         # Save to database
@@ -273,6 +377,9 @@ async def search_files(
         for file in files:
             if isinstance(file["upload_date"], datetime):
                 file["upload_date"] = file["upload_date"].isoformat()
+            # Ensure images field exists
+            if "images" not in file:
+                file["images"] = []
         
         return files
         
@@ -289,6 +396,9 @@ async def list_files():
         for file in files:
             if isinstance(file["upload_date"], datetime):
                 file["upload_date"] = file["upload_date"].isoformat()
+            # Ensure images field exists
+            if "images" not in file:
+                file["images"] = []
         
         return files
         
@@ -307,6 +417,10 @@ async def get_file_info(file_id: str):
         # Convert datetime to ISO format
         if isinstance(file_info["upload_date"], datetime):
             file_info["upload_date"] = file_info["upload_date"].isoformat()
+        
+        # Ensure images field exists
+        if "images" not in file_info:
+            file_info["images"] = []
         
         return file_info
         
@@ -357,10 +471,24 @@ async def delete_file(file_id: str):
         if not file_info:
             raise HTTPException(status_code=404, detail="File not found")
         
-        # Delete file from disk
+        # Delete main file from disk
         file_path = os.path.join(UPLOAD_DIRECTORY, file_info["file_name"])
         if os.path.exists(file_path):
             os.remove(file_path)
+        
+        # Delete associated images
+        if "images" in file_info:
+            for image in file_info["images"]:
+                # Delete original image
+                image_path = os.path.join(IMAGES_DIRECTORY, image.get("filename", ""))
+                if os.path.exists(image_path):
+                    os.remove(image_path)
+                
+                # Delete thumbnail
+                thumbnail_filename = image.get("filename", "").replace(".", "_thumb.")
+                thumbnail_path = os.path.join(IMAGES_DIRECTORY, thumbnail_filename)
+                if os.path.exists(thumbnail_path):
+                    os.remove(thumbnail_path)
         
         # Delete from database
         files_collection.delete_one({"id": file_id})
@@ -421,6 +549,9 @@ async def get_files_by_category(category: str):
         for file in files:
             if isinstance(file["upload_date"], datetime):
                 file["upload_date"] = file["upload_date"].isoformat()
+            # Ensure images field exists
+            if "images" not in file:
+                file["images"] = []
         
         return files
         
