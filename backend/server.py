@@ -167,8 +167,8 @@ async def get_categories():
 @app.post("/api/files/upload", response_model=FileUploadResponse)
 async def upload_file(
     file: UploadFile = File(...),
-    description: Optional[str] = None,
-    category: Optional[str] = None
+    description: Optional[str] = Form(None),
+    category: Optional[str] = Form("Other")
 ):
     """Upload a software file with category"""
     try:
