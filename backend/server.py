@@ -168,7 +168,7 @@ async def get_categories():
 async def upload_file(
     file: UploadFile = File(...),
     description: Optional[str] = None,
-    category: str = "Other"
+    category: Optional[str] = None
 ):
     """Upload a software file with category"""
     try:
