@@ -1,21 +1,62 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 
 function App() {
   const [files, setFiles] = useState([]);
   const [selectedFile, setSelectedFile] = useState(null);
   const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('Other');
+  const [categories, setCategories] = useState(['Other']);
   const [uploading, setUploading] = useState(false);
-  const [stats, setStats] = useState({ total_files: 0, total_downloads: 0 });
+  const [stats, setStats] = useState({ 
+    total_files: 0, 
+    total_downloads: 0,
+    category_stats: [],
+    popular_files: []
+  });
   const [message, setMessage] = useState('');
+  
+  // Search and filter states
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedFileType, setSelectedFileType] = useState('All');
+  const [sortBy, setSortBy] = useState('upload_date');
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [isSearching, setIsSearching] = useState(false);
 
   const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 
-  // Fetch files on component mount
+  // Fetch categories on component mount
   useEffect(() => {
+    fetchCategories();
     fetchFiles();
     fetchStats();
   }, []);
+
+  // Debounced search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (searchTerm || selectedCategory !== 'All' || selectedFileType !== 'All') {
+        searchFiles();
+      } else {
+        fetchFiles();
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm, selectedCategory, selectedFileType, sortBy, sortOrder]);
+
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch(`${backendUrl}/api/categories`);
+      if (response.ok) {
+        const data = await response.json();
+        setCategories(data.categories);
+      }
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
 
   const fetchFiles = async () => {
     try {
@@ -27,6 +68,29 @@ function App() {
     } catch (error) {
       console.error('Error fetching files:', error);
       setMessage('Error loading files');
+    }
+  };
+
+  const searchFiles = async () => {
+    setIsSearching(true);
+    try {
+      const params = new URLSearchParams();
+      if (searchTerm) params.append('search', searchTerm);
+      if (selectedCategory !== 'All') params.append('category', selectedCategory);
+      if (selectedFileType !== 'All') params.append('file_type', selectedFileType);
+      params.append('sort_by', sortBy);
+      params.append('sort_order', sortOrder);
+
+      const response = await fetch(`${backendUrl}/api/files/search?${params}`);
+      if (response.ok) {
+        const data = await response.json();
+        setFiles(data);
+      }
+    } catch (error) {
+      console.error('Error searching files:', error);
+      setMessage('Error searching files');
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -62,6 +126,7 @@ function App() {
     if (description) {
       formData.append('description', description);
     }
+    formData.append('category', category);
 
     try {
       const response = await fetch(`${backendUrl}/api/files/upload`, {
@@ -75,6 +140,7 @@ function App() {
         setMessage('File uploaded successfully!');
         setSelectedFile(null);
         setDescription('');
+        setCategory('Other');
         document.getElementById('fileInput').value = '';
         fetchFiles();
         fetchStats();
@@ -146,6 +212,14 @@ function App() {
     }
   };
 
+  const clearFilters = () => {
+    setSearchTerm('');
+    setSelectedCategory('All');
+    setSelectedFileType('All');
+    setSortBy('upload_date');
+    setSortOrder('desc');
+  };
+
   const formatFileSize = (bytes) => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -164,6 +238,24 @@ function App() {
     });
   };
 
+  const getCategoryColor = (category) => {
+    const colors = {
+      'Games': 'bg-purple-100 text-purple-800',
+      'Utilities': 'bg-blue-100 text-blue-800',
+      'Development Tools': 'bg-green-100 text-green-800',
+      'Multimedia': 'bg-pink-100 text-pink-800',
+      'Security': 'bg-red-100 text-red-800',
+      'Business': 'bg-yellow-100 text-yellow-800',
+      'Education': 'bg-indigo-100 text-indigo-800',
+      'Internet': 'bg-cyan-100 text-cyan-800',
+      'System Tools': 'bg-gray-100 text-gray-800',
+      'Graphics': 'bg-orange-100 text-orange-800',
+      'Office': 'bg-teal-100 text-teal-800',
+      'Other': 'bg-gray-100 text-gray-600'
+    };
+    return colors[category] || colors['Other'];
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -174,7 +266,7 @@ function App() {
               <h1 className="text-3xl font-bold text-gray-900">
                 Software Distribution Platform
               </h1>
-              <p className="text-gray-600">Upload and distribute your software</p>
+              <p className="text-gray-600">Upload, organize and distribute your software</p>
             </div>
             <div className="flex space-x-6 text-sm text-gray-500">
               <div>
@@ -196,23 +288,41 @@ function App() {
           </div>
           <div className="p-6">
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select File
-                </label>
-                <input
-                  id="fileInput"
-                  type="file"
-                  onChange={handleFileSelect}
-                  accept=".exe,.msi,.dmg,.apk,.deb,.rpm,.zip,.tar.gz,.tar.xz"
-                  className="block w-full text-sm text-gray-500
-                    file:mr-4 file:py-2 file:px-4
-                    file:rounded-full file:border-0
-                    file:text-sm file:font-semibold
-                    file:bg-blue-50 file:text-blue-700
-                    hover:file:bg-blue-100
-                    cursor-pointer"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Select File
+                  </label>
+                  <input
+                    id="fileInput"
+                    type="file"
+                    onChange={handleFileSelect}
+                    accept=".exe,.msi,.dmg,.apk,.deb,.rpm,.zip,.tar.gz,.tar.xz"
+                    className="block w-full text-sm text-gray-500
+                      file:mr-4 file:py-2 file:px-4
+                      file:rounded-full file:border-0
+                      file:text-sm file:font-semibold
+                      file:bg-blue-50 file:text-blue-700
+                      hover:file:bg-blue-100
+                      cursor-pointer"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Category
+                  </label>
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md 
+                      focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {categories.map((cat) => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               
               <div>
@@ -252,15 +362,147 @@ function App() {
           </div>
         </div>
 
+        {/* Search and Filter Section */}
+        <div className="bg-white rounded-lg shadow mb-8">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-xl font-semibold text-gray-900">Search & Filter</h2>
+          </div>
+          <div className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              {/* Search Input */}
+              <div className="lg:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Search
+                </label>
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search by name or description..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md 
+                    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              {/* Category Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Category
+                </label>
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md 
+                    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="All">All Categories</option>
+                  {categories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* File Type Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  File Type
+                </label>
+                <select
+                  value={selectedFileType}
+                  onChange={(e) => setSelectedFileType(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md 
+                    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="All">All Types</option>
+                  <option value="application/zip">ZIP Files</option>
+                  <option value="application/x-msdownload">EXE Files</option>
+                  <option value="application/vnd.android.package-archive">APK Files</option>
+                  <option value="application/x-debian-package">DEB Files</option>
+                </select>
+              </div>
+
+              {/* Sort Options */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Sort By
+                </label>
+                <select
+                  value={`${sortBy}-${sortOrder}`}
+                  onChange={(e) => {
+                    const [field, order] = e.target.value.split('-');
+                    setSortBy(field);
+                    setSortOrder(order);
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md 
+                    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="upload_date-desc">Newest First</option>
+                  <option value="upload_date-asc">Oldest First</option>
+                  <option value="original_name-asc">Name A-Z</option>
+                  <option value="original_name-desc">Name Z-A</option>
+                  <option value="file_size-desc">Largest First</option>
+                  <option value="file_size-asc">Smallest First</option>
+                  <option value="download_count-desc">Most Downloaded</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Clear Filters Button */}
+            <div className="mt-4 flex justify-between items-center">
+              <button
+                onClick={clearFilters}
+                className="text-blue-600 hover:text-blue-800 font-medium"
+              >
+                Clear All Filters
+              </button>
+              <div className="text-sm text-gray-500">
+                {isSearching ? 'Searching...' : `${files.length} files found`}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Category Statistics */}
+        {stats.category_stats && stats.category_stats.length > 0 && (
+          <div className="bg-white rounded-lg shadow mb-8">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Categories Overview</h2>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                {stats.category_stats.map((stat) => (
+                  <div
+                    key={stat._id}
+                    className={`p-3 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md ${getCategoryColor(stat._id)}`}
+                    onClick={() => setSelectedCategory(stat._id)}
+                  >
+                    <div className="text-sm font-medium">{stat._id}</div>
+                    <div className="text-lg font-bold">{stat.count}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Files List */}
         <div className="bg-white rounded-lg shadow">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900">Available Software</h2>
+            <h2 className="text-xl font-semibold text-gray-900">
+              Available Software
+              {searchTerm && (
+                <span className="text-sm font-normal text-gray-500 ml-2">
+                  - Search results for "{searchTerm}"
+                </span>
+              )}
+            </h2>
           </div>
           <div className="p-6">
             {files.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
-                No files uploaded yet. Upload your first software above!
+                {searchTerm || selectedCategory !== 'All' || selectedFileType !== 'All' 
+                  ? 'No files match your search criteria. Try adjusting your filters.'
+                  : 'No files uploaded yet. Upload your first software above!'}
               </div>
             ) : (
               <div className="space-y-4">
@@ -268,13 +510,18 @@ function App() {
                   <div key={file.id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <h3 className="text-lg font-medium text-gray-900 mb-1">
-                          {file.original_name}
-                        </h3>
+                        <div className="flex items-center gap-2 mb-2">
+                          <h3 className="text-lg font-medium text-gray-900">
+                            {file.original_name}
+                          </h3>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(file.category)}`}>
+                            {file.category}
+                          </span>
+                        </div>
                         {file.description && (
                           <p className="text-gray-600 mb-2">{file.description}</p>
                         )}
-                        <div className="flex space-x-4 text-sm text-gray-500">
+                        <div className="flex flex-wrap gap-4 text-sm text-gray-500">
                           <span>Size: {formatFileSize(file.file_size)}</span>
                           <span>Uploaded: {formatDate(file.upload_date)}</span>
                           <span>Downloads: {file.download_count}</span>

@@ -1,8 +1,8 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pymongo import MongoClient
+from pymongo import MongoClient, TEXT
 from pydantic import BaseModel
 from typing import List, Optional
 import os
@@ -11,9 +11,10 @@ import shutil
 from datetime import datetime
 import mimetypes
 from pathlib import Path
+import re
 
 # Initialize FastAPI app
-app = FastAPI(title="Software Distribution Platform", version="1.0.0")
+app = FastAPI(title="Software Distribution Platform", version="2.0.0")
 
 # CORS middleware
 app.add_middleware(
@@ -30,6 +31,17 @@ try:
     client = MongoClient(MONGO_URL)
     db = client['software_distribution']
     files_collection = db['files']
+    
+    # Create text index for search functionality
+    try:
+        files_collection.create_index([
+            ("original_name", TEXT),
+            ("description", TEXT),
+            ("category", TEXT)
+        ])
+    except Exception as e:
+        print(f"Index creation note: {e}")
+    
     print(f"Connected to MongoDB at: {MONGO_URL}")
 except Exception as e:
     print(f"Failed to connect to MongoDB: {e}")
@@ -39,6 +51,22 @@ except Exception as e:
 UPLOAD_DIRECTORY = "/app/uploads"
 ALLOWED_EXTENSIONS = {'.exe', '.msi', '.dmg', '.apk', '.deb', '.rpm', '.zip', '.tar.gz', '.tar.xz'}
 MAX_FILE_SIZE = 500 * 1024 * 1024  # 500MB
+
+# Categories configuration
+CATEGORIES = [
+    "Games",
+    "Utilities", 
+    "Development Tools",
+    "Multimedia",
+    "Security",
+    "Business",
+    "Education",
+    "Internet",
+    "System Tools",
+    "Graphics",
+    "Office",
+    "Other"
+]
 
 # Create upload directory if it doesn't exist
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
@@ -52,12 +80,22 @@ class FileInfo(BaseModel):
     file_type: str
     upload_date: datetime
     description: Optional[str] = None
+    category: str = "Other"
     download_count: int = 0
 
 class FileUploadResponse(BaseModel):
     success: bool
     message: str
     file_info: Optional[FileInfo] = None
+
+class SearchFilters(BaseModel):
+    search: Optional[str] = None
+    category: Optional[str] = None
+    file_type: Optional[str] = None
+    min_size: Optional[int] = None
+    max_size: Optional[int] = None
+    sort_by: Optional[str] = "upload_date"  # upload_date, original_name, download_count, file_size
+    sort_order: Optional[str] = "desc"  # asc, desc
 
 def validate_file(file: UploadFile):
     """Validate uploaded file"""
@@ -78,20 +116,68 @@ def get_file_size(file: UploadFile):
     file.file.seek(0)  # Reset to beginning
     return size
 
+def build_search_query(filters: SearchFilters):
+    """Build MongoDB query from search filters"""
+    query = {}
+    
+    # Text search
+    if filters.search:
+        query["$text"] = {"$search": filters.search}
+    
+    # Category filter
+    if filters.category and filters.category != "All":
+        query["category"] = filters.category
+    
+    # File type filter
+    if filters.file_type and filters.file_type != "All":
+        query["file_type"] = {"$regex": filters.file_type, "$options": "i"}
+    
+    # File size filters
+    if filters.min_size or filters.max_size:
+        size_query = {}
+        if filters.min_size:
+            size_query["$gte"] = filters.min_size
+        if filters.max_size:
+            size_query["$lte"] = filters.max_size
+        query["file_size"] = size_query
+    
+    return query
+
+def build_sort_criteria(filters: SearchFilters):
+    """Build MongoDB sort criteria"""
+    sort_field = filters.sort_by
+    sort_direction = -1 if filters.sort_order == "desc" else 1
+    
+    # Handle text search score sorting
+    if filters.search and sort_field == "relevance":
+        return [("score", {"$meta": "textScore"})]
+    
+    return [(sort_field, sort_direction)]
+
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "Software Distribution Platform"}
+    return {"status": "healthy", "service": "Software Distribution Platform v2.0"}
+
+@app.get("/api/categories")
+async def get_categories():
+    """Get available categories"""
+    return {"categories": CATEGORIES}
 
 @app.post("/api/files/upload", response_model=FileUploadResponse)
 async def upload_file(
     file: UploadFile = File(...),
-    description: Optional[str] = None
+    description: Optional[str] = None,
+    category: str = "Other"
 ):
-    """Upload a software file"""
+    """Upload a software file with category"""
     try:
         # Validate file
         validate_file(file)
+        
+        # Validate category
+        if category not in CATEGORIES:
+            category = "Other"
         
         # Check file size
         file_size = get_file_size(file)
@@ -123,6 +209,7 @@ async def upload_file(
             "file_type": file_type,
             "upload_date": datetime.utcnow(),
             "description": description,
+            "category": category,
             "download_count": 0
         }
         
@@ -143,11 +230,60 @@ async def upload_file(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
+@app.get("/api/files/search", response_model=List[FileInfo])
+async def search_files(
+    search: Optional[str] = Query(None, description="Search term"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    file_type: Optional[str] = Query(None, description="Filter by file type"),
+    min_size: Optional[int] = Query(None, description="Minimum file size in bytes"),
+    max_size: Optional[int] = Query(None, description="Maximum file size in bytes"),
+    sort_by: str = Query("upload_date", description="Sort field"),
+    sort_order: str = Query("desc", description="Sort order (asc/desc)"),
+    limit: int = Query(50, description="Maximum number of results")
+):
+    """Search and filter files"""
+    try:
+        filters = SearchFilters(
+            search=search,
+            category=category,
+            file_type=file_type,
+            min_size=min_size,
+            max_size=max_size,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+        
+        # Build query and sort criteria
+        query = build_search_query(filters)
+        sort_criteria = build_sort_criteria(filters)
+        
+        # Execute search
+        cursor = files_collection.find(query, {"_id": 0})
+        
+        # Apply sorting
+        if sort_criteria:
+            cursor = cursor.sort(sort_criteria)
+        
+        # Apply limit
+        cursor = cursor.limit(limit)
+        
+        files = list(cursor)
+        
+        # Convert datetime objects to ISO format
+        for file in files:
+            if isinstance(file["upload_date"], datetime):
+                file["upload_date"] = file["upload_date"].isoformat()
+        
+        return files
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
 @app.get("/api/files", response_model=List[FileInfo])
 async def list_files():
-    """List all uploaded files"""
+    """List all uploaded files (legacy endpoint)"""
     try:
-        files = list(files_collection.find({}, {"_id": 0}))
+        files = list(files_collection.find({}, {"_id": 0}).sort("upload_date", -1))
         
         # Convert datetime objects to ISO format
         for file in files:
@@ -241,20 +377,57 @@ async def get_stats():
     """Get platform statistics"""
     try:
         total_files = files_collection.count_documents({})
+        
+        # Get total downloads
         total_downloads = files_collection.aggregate([
             {"$group": {"_id": None, "total": {"$sum": "$download_count"}}}
         ])
-        
         download_count = list(total_downloads)
         total_download_count = download_count[0]["total"] if download_count else 0
         
+        # Get category stats
+        category_stats = list(files_collection.aggregate([
+            {"$group": {"_id": "$category", "count": {"$sum": 1}}},
+            {"$sort": {"count": -1}}
+        ]))
+        
+        # Get popular files
+        popular_files = list(files_collection.find(
+            {}, {"_id": 0, "original_name": 1, "download_count": 1, "category": 1}
+        ).sort("download_count", -1).limit(5))
+        
         return {
             "total_files": total_files,
-            "total_downloads": total_download_count
+            "total_downloads": total_download_count,
+            "category_stats": category_stats,
+            "popular_files": popular_files
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
+
+@app.get("/api/files/category/{category}")
+async def get_files_by_category(category: str):
+    """Get files by category"""
+    try:
+        if category not in CATEGORIES:
+            raise HTTPException(status_code=400, detail="Invalid category")
+        
+        files = list(files_collection.find(
+            {"category": category}, {"_id": 0}
+        ).sort("upload_date", -1))
+        
+        # Convert datetime objects to ISO format
+        for file in files:
+            if isinstance(file["upload_date"], datetime):
+                file["upload_date"] = file["upload_date"].isoformat()
+        
+        return files
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get files by category: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
